@@ -12,13 +12,54 @@ import (
 	"github.com/farhann-saleem/jmcp/internal/output"
 )
 
-func runWatch(ctx context.Context, c *client.Client, args []string) error {
+const seenTrackerMax = 10000
+
+type seenTracker struct {
+	m     map[string]TraceSummary
+	order []string
+}
+
+func newSeenTracker() *seenTracker {
+	return &seenTracker{m: make(map[string]TraceSummary)}
+}
+
+func (s *seenTracker) has(id string) bool {
+	_, ok := s.m[id]
+	return ok
+}
+
+func (s *seenTracker) add(trace TraceSummary) {
+	if len(s.m) >= seenTrackerMax {
+		evict := len(s.order) / 10
+		if evict < 1 {
+			evict = 1
+		}
+		for _, id := range s.order[:evict] {
+			delete(s.m, id)
+		}
+		s.order = s.order[evict:]
+	}
+	s.m[trace.TraceID] = trace
+	s.order = append(s.order, trace.TraceID)
+}
+
+func (s *seenTracker) all() []TraceSummary {
+	out := make([]TraceSummary, 0, len(s.m))
+	for _, t := range s.m {
+		out = append(out, t)
+	}
+	return out
+}
+
+func (s *seenTracker) len() int { return len(s.m) }
+
+func runWatch(ctx context.Context, c *client.Client, args []string, clr *output.Colorizer) error {
 	fs := newFlagSet("watch")
 	interval := stringFlag(fs, "interval", "5s", "poll interval")
 	errorsOnly := boolFlag(fs, "errors", false, "only error traces")
 	alert := boolFlag(fs, "alert", false, "terminal bell on new findings")
 	since := stringFlag(fs, "since", "5m", "initial lookback")
-	if err := fs.Parse(args); err != nil {
+	if err := parseWithHelp(fs, "watch", "Watch for new traces", "watch <service> [flags]", args); err != nil {
 		return err
 	}
 	if len(fs.Args()) == 0 {
@@ -29,7 +70,7 @@ func runWatch(ctx context.Context, c *client.Client, args []string) error {
 	if err != nil {
 		return err
 	}
-	seen := map[string]TraceSummary{}
+	seen := newSeenTracker()
 	start := time.Now()
 	var peak TraceSummary
 
@@ -49,35 +90,38 @@ func runWatch(ctx context.Context, c *client.Client, args []string) error {
 			return err
 		}
 		for _, trace := range result.Traces {
-			if _, ok := seen[trace.TraceID]; ok {
+			if seen.has(trace.TraceID) {
 				continue
 			}
-			seen[trace.TraceID] = trace
+			seen.add(trace)
 			if trace.DurationUS > peak.DurationUS {
 				peak = trace
 			}
-			status := "OK"
+			status := clr.Green("OK")
 			if trace.HasErrors {
-				status = "ERROR"
+				status = clr.Red("ERROR")
 				if *alert {
 					fmt.Print("\a")
 				}
 			}
 			fmt.Printf("[%s] %s | %s | %s | %d spans | %s\n",
-				time.Now().Format("15:04:05"), trace.RootService, trace.RootSpanName,
+				time.Now().Format("15:04:05"), clr.Cyan(trace.RootService), trace.RootSpanName,
 				output.FormatDurationUS(trace.DurationUS), trace.SpanCount, status)
 		}
 		time.Sleep(tick)
 	}
 }
 
-func runCheck(ctx context.Context, c *client.Client, args []string) int {
+func runCheck(ctx context.Context, c *client.Client, args []string, clr *output.Colorizer) int {
 	fs := newFlagSet("check")
 	maxErrorRate := intFlag(fs, "error-rate", 10, "max acceptable error percentage")
 	p95Limit := stringFlag(fs, "p95", "1s", "max p95 latency")
 	since := stringFlag(fs, "since", "5m", "lookback window")
 	depth := intFlag(fs, "depth", 50, "sample size")
-	if err := fs.Parse(args); err != nil {
+	if err := parseWithHelp(fs, "check", "Health gate check for CI/CD", "check <service> [flags]", args); err != nil {
+		if errors.Is(err, errHelp) {
+			return 0
+		}
 		fmt.Fprintln(os.Stderr, "Error:", err)
 		return 3
 	}
@@ -106,23 +150,19 @@ func runCheck(ctx context.Context, c *client.Client, args []string) int {
 
 	fmt.Printf("Service: %s (last %s, %d traces sampled)\n\n", service, *since, stats.TotalTraces)
 	output.TableRows(os.Stdout, []string{"CHECK", "THRESHOLD", "ACTUAL", "STATUS"}, [][]string{
-		{"Error rate", fmt.Sprintf("< %d%%", *maxErrorRate), fmt.Sprintf("%.1f%%", errorRate), passFail(errorPass)},
-		{"P95 latency", "< " + *p95Limit, output.FormatDurationUS(stats.P95Duration), passFail(p95Pass)},
+		{"Error rate", fmt.Sprintf("< %d%%", *maxErrorRate), fmt.Sprintf("%.1f%%", errorRate), clr.Status(errorPass, passFail(errorPass))},
+		{"P95 latency", "< " + *p95Limit, output.FormatDurationUS(stats.P95Duration), clr.Status(p95Pass, passFail(p95Pass))},
 	})
 	if errorPass && p95Pass {
-		fmt.Println("\nResult: HEALTHY")
+		fmt.Println("\nResult: " + clr.Green("HEALTHY"))
 		return 0
 	}
-	fmt.Println("\nResult: UNHEALTHY")
+	fmt.Println("\nResult: " + clr.Red("UNHEALTHY"))
 	return 1
 }
 
-func printWatchSummary(start time.Time, seen map[string]TraceSummary, peak TraceSummary) {
-	traces := make([]TraceSummary, 0, len(seen))
-	for _, trace := range seen {
-		traces = append(traces, trace)
-	}
-	stats := analysis.ComputeStats(traces)
+func printWatchSummary(start time.Time, seen *seenTracker, peak TraceSummary) {
+	stats := analysis.ComputeStats(seen.all())
 	fmt.Printf("\nWatch summary (%s):\n", time.Since(start).Round(time.Second))
 	fmt.Printf("  Traces seen: %d\n", stats.TotalTraces)
 	if stats.TotalTraces > 0 {

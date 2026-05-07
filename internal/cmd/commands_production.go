@@ -17,10 +17,10 @@ import (
 	"github.com/farhann-saleem/jmcp/internal/output"
 )
 
-func runInvestigate(ctx context.Context, c *client.Client, args []string, opts globalOptions) (any, error) {
+func runInvestigate(ctx context.Context, c *client.Client, args []string, opts globalOptions, clr *output.Colorizer) (any, error) {
 	fs := newFlagSet("investigate")
 	depth := intFlag(fs, "depth", 0, "max topology depth")
-	if err := fs.Parse(args); err != nil {
+	if err := parseWithHelp(fs, "investigate", "Full trace investigation", "investigate <trace-id> [flags]", args); err != nil {
 		return nil, err
 	}
 	traceID, _, err := resolveTraceID(ctx, c, fs.Args())
@@ -47,17 +47,17 @@ func runInvestigate(ctx context.Context, c *client.Client, args []string, opts g
 		return map[string]any{"topology": topo, "errors": errs, "critical_path": cp}, nil
 	}
 	fmt.Println("=== Topology ===")
-	renderTopology(os.Stdout, topo)
+	renderTopology(os.Stdout, topo, clr)
 	fmt.Println("\n=== Errors ===")
-	renderErrors(os.Stdout, errs)
+	renderErrors(os.Stdout, errs, clr)
 	fmt.Println("\n=== Critical Path ===")
-	renderCriticalPath(os.Stdout, cp)
+	renderCriticalPath(os.Stdout, cp, clr)
 	return nil, nil
 }
 
 func runInit(args []string) (any, error) {
 	fs := newFlagSet("init")
-	if err := fs.Parse(args); err != nil {
+	if err := parseWithHelp(fs, "init", "Initialize .jmcp project directory", "init", args); err != nil {
 		return nil, err
 	}
 	dirs := []string{".jmcp", ".jmcp/reports", ".jmcp/snapshots"}
@@ -88,7 +88,7 @@ func runReport(ctx context.Context, c *client.Client, args []string, opts global
 	format := stringFlag(fs, "format", "md", "md or json")
 	var notes multiFlag
 	fs.Var(&notes, "note", "investigator note")
-	if err := fs.Parse(args); err != nil {
+	if err := parseWithHelp(fs, "report", "Generate trace investigation report", "report <trace-id> [flags]", args); err != nil {
 		return nil, err
 	}
 	traceID, _, err := resolveTraceID(ctx, c, fs.Args())
@@ -113,7 +113,11 @@ func runReport(ctx context.Context, c *client.Client, args []string, opts global
 		for _, span := range errs.Spans {
 			spanIDs = append(spanIDs, span.SpanID)
 		}
-		details, _, _ = runDetails(ctx, c, append([]string{traceID}, spanIDs...))
+		var detailsErr error
+		details, _, detailsErr = runDetails(ctx, c, append([]string{traceID}, spanIDs...))
+		if detailsErr != nil {
+			fmt.Fprintf(os.Stderr, "Warning: failed to fetch error span details: %v\n", detailsErr)
+		}
 	}
 	reportTitle := *title
 	if reportTitle == "" && len(topo.Spans) > 0 {
@@ -162,7 +166,7 @@ func runSnapshot(ctx context.Context, c *client.Client, args []string, opts glob
 	since := stringFlag(fs, "since", "1h", "lookback duration")
 	depth := intFlag(fs, "depth", 20, "number of traces")
 	dir := stringFlag(fs, "dir", ".jmcp/snapshots", "snapshot directory")
-	if err := fs.Parse(args); err != nil {
+	if err := parseWithHelp(fs, "snapshot", "Capture service trace snapshot", "snapshot <service> [flags]", args); err != nil {
 		return nil, err
 	}
 	pos := fs.Args()
@@ -205,9 +209,9 @@ func runSnapshot(ctx context.Context, c *client.Client, args []string, opts glob
 	return snap, nil
 }
 
-func runDiff(args []string) (any, error) {
+func runDiff(args []string, clr *output.Colorizer) (any, error) {
 	fs := newFlagSet("diff")
-	if err := fs.Parse(args); err != nil {
+	if err := parseWithHelp(fs, "diff", "Compare two snapshots", "diff <snapshot-a> <snapshot-b>", args); err != nil {
 		return nil, err
 	}
 	pos := fs.Args()
@@ -234,7 +238,7 @@ func runDiff(args []string) (any, error) {
 	return nil, nil
 }
 
-func runBlame(ctx context.Context, c *client.Client, args []string, opts globalOptions) (any, error) {
+func runBlame(ctx context.Context, c *client.Client, args []string, opts globalOptions, clr *output.Colorizer) (any, error) {
 	traceID, _, err := resolveTraceID(ctx, c, args)
 	if err != nil {
 		return nil, err
@@ -269,20 +273,20 @@ func runBlame(ctx context.Context, c *client.Client, args []string, opts globalO
 	}
 	fmt.Printf("Trace: %s\n\n", traceID)
 	fmt.Println("Root Cause Analysis:")
-	fmt.Printf("  Primary suspect: %s (%s)\n", suspect.Service, suspect.SpanName)
+	fmt.Printf("  Primary suspect: %s (%s)\n", clr.Cyan(suspect.Service), suspect.SpanName)
 	fmt.Printf("  Reason: %s\n", reason)
 	fmt.Printf("  Self-time: %s of %s total\n", output.FormatDurationUS(suspect.SelfTimeUS), output.FormatDurationUS(cp.TotalDurationUS))
 	if errSpan, ok := errorBySpan[suspect.SpanID]; ok && errSpan.Status.Message != "" {
-		fmt.Printf("  Error: %s\n", errSpan.Status.Message)
+		fmt.Printf("  Error: %s\n", clr.Red(errSpan.Status.Message))
 	}
-	fmt.Printf("\nRecommendation: Investigate %s service's %s operation\n", suspect.Service, suspect.SpanName)
+	fmt.Printf("\nRecommendation: Investigate %s service's %s operation\n", clr.Cyan(suspect.Service), suspect.SpanName)
 	return nil, nil
 }
 
 func runExport(ctx context.Context, c *client.Client, args []string) error {
 	fs := newFlagSet("export")
 	format := stringFlag(fs, "format", "json", "json, csv, dot")
-	if err := fs.Parse(args); err != nil {
+	if err := parseWithHelp(fs, "export", "Export trace data", "export <trace-id> [flags]", args); err != nil {
 		return err
 	}
 	traceID, _, err := resolveTraceID(ctx, c, fs.Args())
@@ -330,7 +334,7 @@ func runExport(ctx context.Context, c *client.Client, args []string) error {
 
 func runReplay(ctx context.Context, c *client.Client, args []string) (any, error) {
 	fs := newFlagSet("replay")
-	if err := fs.Parse(args); err != nil {
+	if err := parseWithHelp(fs, "replay", "Replay investigation from report", "replay <report-file>", args); err != nil {
 		return nil, err
 	}
 	if len(fs.Args()) != 1 {
@@ -360,6 +364,7 @@ func runReplay(ctx context.Context, c *client.Client, args []string) (any, error
 }
 
 func renderMarkdownReport(report *Report) string {
+	nc := output.DisabledColorizer()
 	var b strings.Builder
 	fmt.Fprintf(&b, "# Trace Report: %s\n\n", report.Title)
 	fmt.Fprintf(&b, "**Trace ID**: %s\n", report.TraceID)
@@ -368,20 +373,20 @@ func renderMarkdownReport(report *Report) string {
 	fmt.Fprintf(&b, "**Tool Version**: jmcp %s\n\n", report.ToolVersion)
 	fmt.Fprintln(&b, "## Topology")
 	fmt.Fprintln(&b)
-	renderTopology(&b, report.Topology)
+	renderTopology(&b, report.Topology, nc)
 	fmt.Fprintln(&b)
 	fmt.Fprintln(&b, "## Errors")
 	fmt.Fprintln(&b)
-	renderErrors(&b, report.Errors)
+	renderErrors(&b, report.Errors, nc)
 	fmt.Fprintln(&b)
 	fmt.Fprintln(&b, "## Critical Path")
 	fmt.Fprintln(&b)
-	renderCriticalPath(&b, report.CriticalPath)
+	renderCriticalPath(&b, report.CriticalPath, nc)
 	if report.ErrorDetails != nil {
 		fmt.Fprintln(&b)
 		fmt.Fprintln(&b, "## Error Span Details")
 		fmt.Fprintln(&b)
-		renderDetails(&b, report.ErrorDetails)
+		renderDetails(&b, report.ErrorDetails, nc)
 	}
 	if len(report.Notes) > 0 {
 		fmt.Fprintln(&b)

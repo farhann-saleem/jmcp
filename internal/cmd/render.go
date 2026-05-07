@@ -9,7 +9,7 @@ import (
 	"github.com/farhann-saleem/jmcp/internal/output"
 )
 
-func renderTopology(w io.Writer, topo *Topology) {
+func renderTopology(w io.Writer, topo *Topology, c *output.Colorizer) {
 	fmt.Fprintln(w, topo.TraceID)
 	nodes := append([]TopologySpan(nil), topo.Spans...)
 	sort.SliceStable(nodes, func(i, j int) bool {
@@ -28,14 +28,15 @@ func renderTopology(w io.Writer, topo *Topology) {
 		}
 		truncated := ""
 		if span.TruncatedChildren > 0 {
-			truncated = fmt.Sprintf(" [+%d truncated]", span.TruncatedChildren)
+			truncated = c.Yellow(fmt.Sprintf(" [+%d truncated]", span.TruncatedChildren))
 		}
+		statusStr := c.Status(status != "ERROR", status)
 		fmt.Fprintf(w, "%s%s [%s] %s (%s) %s%s\n",
-			prefix, branch, span.Service, span.SpanName, output.FormatDurationUS(span.DurationUS), status, truncated)
+			prefix, branch, c.Cyan(span.Service), span.SpanName, output.FormatDurationUS(span.DurationUS), statusStr, truncated)
 	}
 }
 
-func renderErrors(w io.Writer, errs *TraceErrors) {
+func renderErrors(w io.Writer, errs *TraceErrors, c *output.Colorizer) {
 	fmt.Fprintf(w, "Total errors: %d (showing %d)\n\n", errs.TotalErrorCount, len(errs.Spans))
 	rows := make([][]string, 0, len(errs.Spans))
 	for _, span := range errs.Spans {
@@ -44,27 +45,27 @@ func renderErrors(w io.Writer, errs *TraceErrors) {
 			msg = span.Status.Code
 		}
 		rows = append(rows, []string{
-			span.SpanID,
-			span.Service,
+			c.Dim(span.SpanID),
+			c.Cyan(span.Service),
 			span.SpanName,
 			output.FormatDurationUS(span.DurationUS),
-			msg,
+			c.Red(msg),
 		})
 	}
 	output.TableRows(w, []string{"SPAN ID", "SERVICE", "SPAN NAME", "DURATION", "ERROR"}, rows)
 	if errs.TotalErrorCount > len(errs.Spans) {
-		fmt.Fprintf(w, "\nWarning: %d additional error spans were truncated by the server.\n", errs.TotalErrorCount-len(errs.Spans))
+		fmt.Fprintf(w, "\n%s\n", c.Yellow(fmt.Sprintf("Warning: %d additional error spans were truncated by the server.", errs.TotalErrorCount-len(errs.Spans))))
 	}
 }
 
-func renderDetails(w io.Writer, details *SpanDetails) {
+func renderDetails(w io.Writer, details *SpanDetails, c *output.Colorizer) {
 	for i, span := range details.Spans {
 		if i > 0 {
 			fmt.Fprintln(w)
 		}
-		fmt.Fprintf(w, "Span: %s\n", span.SpanID)
+		fmt.Fprintf(w, "Span: %s\n", c.Dim(span.SpanID))
 		output.KeyValues(w, [][2]string{
-			{"Service", span.Service},
+			{"Service", c.Cyan(span.Service)},
 			{"Name", span.SpanName},
 			{"Parent", span.ParentSpanID},
 			{"Start", span.StartTime},
@@ -89,7 +90,7 @@ func renderDetails(w io.Writer, details *SpanDetails) {
 	}
 }
 
-func renderCriticalPath(w io.Writer, cp *CriticalPath) {
+func renderCriticalPath(w io.Writer, cp *CriticalPath, c *output.Colorizer) {
 	percent := output.Percent(float64(cp.CriticalPathDurationUS), float64(cp.TotalDurationUS))
 	fmt.Fprintf(w, "Trace: %s\n", cp.TraceID)
 	fmt.Fprintf(w, "Total Duration:         %s\n", output.FormatDurationUS(cp.TotalDurationUS))
@@ -98,7 +99,7 @@ func renderCriticalPath(w io.Writer, cp *CriticalPath) {
 	for i, seg := range cp.Segments {
 		rows = append(rows, []string{
 			fmt.Sprintf("%d", i+1),
-			seg.Service,
+			c.Cyan(seg.Service),
 			seg.SpanName,
 			output.FormatDurationUS(seg.SelfTimeUS),
 			fmt.Sprintf("%s-%s", output.FormatDurationUS(seg.StartOffsetUS), output.FormatDurationUS(seg.EndOffsetUS)),
@@ -115,24 +116,24 @@ func renderCriticalPath(w io.Writer, cp *CriticalPath) {
 			if width < 1 {
 				width = 1
 			}
-			fmt.Fprintf(w, "[%s %s] ", seg.Service, strings.Repeat("#", width))
+			fmt.Fprintf(w, "[%s %s] ", c.Cyan(seg.Service), strings.Repeat("#", width))
 		}
 		fmt.Fprintln(w)
 	}
 }
 
-func renderDeps(w io.Writer, deps *Dependencies) {
+func renderDeps(w io.Writer, deps *Dependencies, c *output.Colorizer) {
 	rows := make([][]string, 0, len(deps.Dependencies))
 	for _, dep := range deps.Dependencies {
-		rows = append(rows, []string{dep.Caller, dep.Callee, fmt.Sprintf("%d", dep.CallCount)})
+		rows = append(rows, []string{c.Cyan(dep.Caller), c.Cyan(dep.Callee), fmt.Sprintf("%d", dep.CallCount)})
 	}
 	output.TableRows(w, []string{"CALLER", "CALLEE", "CALLS"}, rows)
 }
 
-func renderSnapshot(w io.Writer, snap *Snapshot) {
+func renderSnapshot(w io.Writer, snap *Snapshot, c *output.Colorizer) {
 	output.KeyValues(w, [][2]string{
 		{"Label", snap.Label},
-		{"Service", snap.Service},
+		{"Service", c.Cyan(snap.Service)},
 		{"Captured", snap.CapturedAt},
 		{"Traces", fmt.Sprintf("%d", snap.Stats.TotalTraces)},
 		{"Errors", fmt.Sprintf("%d", snap.Stats.ErrorTraces)},

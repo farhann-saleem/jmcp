@@ -1,6 +1,7 @@
 package analysis
 
 import (
+	"math"
 	"sort"
 )
 
@@ -56,6 +57,12 @@ func percentile(sorted []int64, p float64) int64 {
 	if len(sorted) == 0 {
 		return 0
 	}
-	idx := int(float64(len(sorted)-1) * p)
+	idx := int(math.Ceil(float64(len(sorted))*p)) - 1
+	if idx < 0 {
+		idx = 0
+	}
+	if idx >= len(sorted) {
+		idx = len(sorted) - 1
+	}
 	return sorted[idx]
 }

@@ -20,6 +20,8 @@ import (
 
 const defaultEndpoint = "http://localhost:16687/mcp"
 
+var errHelp = errors.New("help requested")
+
 func Execute(args []string, build BuildInfo) int {
 	opts, remaining, err := parseGlobal(args)
 	if err != nil {
@@ -34,6 +36,8 @@ func Execute(args []string, build BuildInfo) int {
 		fmt.Printf("jmcp %s (commit: %s, built: %s)\n", build.Version, build.Commit, build.Date)
 		return 0
 	}
+
+	colorizer := output.NewColorizer(opts.NoColor)
 
 	c := client.New(opts.Endpoint,
 		client.WithTimeout(opts.Timeout),
@@ -77,7 +81,7 @@ func Execute(args []string, build BuildInfo) int {
 	case "deps":
 		data, raw, err = runDeps(ctx, c, cmdArgs)
 	case "investigate":
-		data, err = runInvestigate(ctx, c, cmdArgs, opts)
+		data, err = runInvestigate(ctx, c, cmdArgs, opts, colorizer)
 	case "init":
 		data, err = runInit(cmdArgs)
 	case "report":
@@ -85,15 +89,15 @@ func Execute(args []string, build BuildInfo) int {
 	case "snapshot":
 		data, err = runSnapshot(ctx, c, cmdArgs, opts)
 	case "diff":
-		data, err = runDiff(cmdArgs)
+		data, err = runDiff(cmdArgs, colorizer)
 	case "watch":
-		err = runWatch(ctx, c, cmdArgs)
+		err = runWatch(ctx, c, cmdArgs, colorizer)
 	case "blame":
-		data, err = runBlame(ctx, c, cmdArgs, opts)
+		data, err = runBlame(ctx, c, cmdArgs, opts, colorizer)
 	case "export":
 		err = runExport(ctx, c, cmdArgs)
 	case "check":
-		return runCheck(ctx, c, cmdArgs)
+		return runCheck(ctx, c, cmdArgs, colorizer)
 	case "replay":
 		data, err = runReplay(ctx, c, cmdArgs)
 	default:
@@ -102,6 +106,9 @@ func Execute(args []string, build BuildInfo) int {
 		return 3
 	}
 	if err != nil {
+		if errors.Is(err, errHelp) {
+			return 0
+		}
 		fmt.Fprintln(os.Stderr, "Error:", err)
 		if strings.Contains(err.Error(), "cannot connect") {
 			return 2
@@ -116,7 +123,7 @@ func Execute(args []string, build BuildInfo) int {
 		}
 	}
 	if data != nil {
-		if err := render(os.Stdout, opts.Output, data, raw); err != nil {
+		if err := render(os.Stdout, opts.Output, data, raw, colorizer); err != nil {
 			fmt.Fprintln(os.Stderr, "Error:", err)
 			return 1
 		}
@@ -124,10 +131,21 @@ func Execute(args []string, build BuildInfo) int {
 	return 0
 }
 
+var projConfig projectConfig
+
 func parseGlobal(args []string) (globalOptions, []string, error) {
+	projConfig = loadProjectConfig()
+	endpointDefault := defaultEndpoint
+	if projConfig.Endpoint != "" {
+		endpointDefault = projConfig.Endpoint
+	}
+	outputDefault := string(output.Table)
+	if projConfig.Output != "" {
+		outputDefault = projConfig.Output
+	}
 	opts := globalOptions{
-		Endpoint: envDefault("JMCP_ENDPOINT", defaultEndpoint),
-		Output:   envDefault("JMCP_OUTPUT", string(output.Table)),
+		Endpoint: envDefault("JMCP_ENDPOINT", endpointDefault),
+		Output:   envDefault("JMCP_OUTPUT", outputDefault),
 		Timeout:  30 * time.Second,
 		NoColor:  os.Getenv("NO_COLOR") != "",
 	}
@@ -197,7 +215,7 @@ func parseGlobal(args []string) (globalOptions, []string, error) {
 	return opts, remaining, nil
 }
 
-func render(w io.Writer, format string, data any, raw json.RawMessage) error {
+func render(w io.Writer, format string, data any, raw json.RawMessage, c *output.Colorizer) error {
 	switch output.Format(format) {
 	case output.JSON:
 		return output.WriteJSON(w, data)
@@ -214,7 +232,7 @@ func render(w io.Writer, format string, data any, raw json.RawMessage) error {
 		case *Services:
 			rows := make([][]string, 0, len(v.Services))
 			for _, service := range v.Services {
-				rows = append(rows, []string{service})
+				rows = append(rows, []string{c.Cyan(service)})
 			}
 			output.TableRows(w, []string{"SERVICE"}, rows)
 		case *SpanNames:
@@ -224,19 +242,19 @@ func render(w io.Writer, format string, data any, raw json.RawMessage) error {
 			}
 			output.TableRows(w, []string{"SPAN NAME", "KIND"}, rows)
 		case *SearchResult:
-			renderSearch(w, v)
+			renderSearch(w, v, c)
 		case *Topology:
-			renderTopology(w, v)
+			renderTopology(w, v, c)
 		case *TraceErrors:
-			renderErrors(w, v)
+			renderErrors(w, v, c)
 		case *SpanDetails:
-			renderDetails(w, v)
+			renderDetails(w, v, c)
 		case *CriticalPath:
-			renderCriticalPath(w, v)
+			renderCriticalPath(w, v, c)
 		case *Dependencies:
-			renderDeps(w, v)
+			renderDeps(w, v, c)
 		case *Snapshot:
-			renderSnapshot(w, v)
+			renderSnapshot(w, v, c)
 		default:
 			return output.WriteJSON(w, data)
 		}
@@ -292,6 +310,17 @@ func newFlagSet(name string) *flag.FlagSet {
 	fs := flag.NewFlagSet(name, flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
 	return fs
+}
+
+func parseWithHelp(fs *flag.FlagSet, name, summary, usage string, args []string) error {
+	err := fs.Parse(args)
+	if errors.Is(err, flag.ErrHelp) {
+		fmt.Fprintf(os.Stderr, "\n%s - %s\n\nUsage:\n  jmcp [global flags] %s\n\nFlags:\n", name, summary, usage)
+		fs.SetOutput(os.Stderr)
+		fs.PrintDefaults()
+		return errHelp
+	}
+	return err
 }
 
 func envDefault(name, def string) string {
