@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"time"
 
-	"jmcp/internal/analysis"
+	"github.com/farhann-saleem/jmcp/internal/analysis"
 )
 
 type BuildInfo struct {

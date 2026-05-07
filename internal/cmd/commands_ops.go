@@ -7,9 +7,9 @@ import (
 	"os"
 	"time"
 
-	"jmcp/internal/analysis"
-	"jmcp/internal/client"
-	"jmcp/internal/output"
+	"github.com/farhann-saleem/jmcp/internal/analysis"
+	"github.com/farhann-saleem/jmcp/internal/client"
+	"github.com/farhann-saleem/jmcp/internal/output"
 )
 
 func runWatch(ctx context.Context, c *client.Client, args []string) error {

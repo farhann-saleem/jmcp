@@ -12,9 +12,9 @@ import (
 	"strings"
 	"time"
 
-	"jmcp/internal/analysis"
-	"jmcp/internal/client"
-	"jmcp/internal/output"
+	"github.com/farhann-saleem/jmcp/internal/analysis"
+	"github.com/farhann-saleem/jmcp/internal/client"
+	"github.com/farhann-saleem/jmcp/internal/output"
 )
 
 func runInvestigate(ctx context.Context, c *client.Client, args []string, opts globalOptions) (any, error) {

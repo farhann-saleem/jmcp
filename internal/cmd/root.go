@@ -14,8 +14,8 @@ import (
 	"strings"
 	"time"
 
-	"jmcp/internal/client"
-	"jmcp/internal/output"
+	"github.com/farhann-saleem/jmcp/internal/client"
+	"github.com/farhann-saleem/jmcp/internal/output"
 )
 
 const defaultEndpoint = "http://localhost:16687/mcp"

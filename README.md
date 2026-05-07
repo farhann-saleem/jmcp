@@ -1,5 +1,28 @@
 # jmcp
 
+## Install
+
+### 1. Curl Install Script
+
+```bash
+curl -sSL https://raw.githubusercontent.com/farhann-saleem/jmcp/main/install.sh | bash
+```
+
+### 2. Go Install
+
+```bash
+go install github.com/farhann-saleem/jmcp@latest
+```
+
+### 3. Build From Source
+
+```bash
+git clone https://github.com/farhann-saleem/jmcp.git
+cd jmcp
+make build
+./bin/jmcp --version
+```
+
 `jmcp` is a Go CLI for Jaeger MCP. It hides the Streamable HTTP session handshake, `Mcp-Session-Id` handling, JSON-RPC payloads, and SSE parsing behind incident-oriented commands.
 
 ## Build
@@ -65,4 +88,3 @@ make integration-test
 ```
 
 The integration test expects a running Jaeger MCP server with trace data.
-

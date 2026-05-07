@@ -3,7 +3,7 @@ package main
 import (
 	"os"
 
-	"jmcp/internal/cmd"
+	"github.com/farhann-saleem/jmcp/internal/cmd"
 )
 
 var (

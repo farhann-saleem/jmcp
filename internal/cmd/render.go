@@ -6,7 +6,7 @@ import (
 	"sort"
 	"strings"
 
-	"jmcp/internal/output"
+	"github.com/farhann-saleem/jmcp/internal/output"
 )
 
 func renderTopology(w io.Writer, topo *Topology) {

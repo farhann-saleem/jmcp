@@ -13,8 +13,8 @@ import (
 	"strings"
 	"time"
 
-	"jmcp/internal/client"
-	"jmcp/internal/output"
+	"github.com/farhann-saleem/jmcp/internal/client"
+	"github.com/farhann-saleem/jmcp/internal/output"
 )
 
 func runHealth(ctx context.Context, c *client.Client, args []string) (*Health, json.RawMessage, error) {
