@@ -2,26 +2,31 @@
 
 All notable changes to jmcp are documented here. Format based on [Keep a Changelog](https://keepachangelog.com/).
 
-## [0.3.0] - Unreleased
+## [0.3.0] - 2026-05-08
 
 ### Added
 - Shell completions for bash, zsh, and fish (`jmcp completion bash|zsh|fish`)
+- `completion --help` support
 - Panic recovery with clean error messages and issue reporting link
-- Comprehensive integration test suite (35+ tests covering all commands)
-- Docker Compose for one-command demo setup
-- CHANGELOG.md
-- `make test-race` target for race condition detection
-- `make coverage` target for test coverage reports
-- `make lint` now checks gofmt formatting
+- Integration test suite (38 tests covering all commands, exit codes, help text)
+- Docker Compose for one-command demo setup (`docker compose up -d`)
+- Apache 2.0 LICENSE file
+- `make test-race`, `make coverage`, `make lint` targets
+
+### Fixed
+- Snapshot label path traversal (user input sanitized with `filepath.Base`)
+- Integration tests: flag ordering (flags before positional args for Go flag package)
+- Integration tests: service selection prefers non-jaeger service
+- Integration tests: `set -e` compatibility for exit code tests
 
 ### Changed
-- Professional README with badges, command reference, CI/CD examples
-- Integration test expanded from 3 to 35+ validations
+- README rewritten with workflow-oriented docs, flag ordering warning, grouped command reference
+- CHANGELOG updated to reflect shipped releases
 
 ## [0.2.0] - 2026-05-08
 
 ### Fixed
-- Percentile calculation bug for small sample sizes (used nearest-rank method)
+- Percentile calculation bug for small sample sizes (uses nearest-rank method)
 - Watch command unbounded memory leak (capped at 10,000 traces with batch eviction)
 - Per-command `--help` printing help text twice
 - Search cache errors silently swallowed (now warns on stderr)
@@ -33,7 +38,7 @@ All notable changes to jmcp are documented here. Format based on [Keep a Changel
 - `.jmcp/config.yaml` reading (endpoint, search_depth, since, output defaults)
 - `TraceCount` display when server truncates search results
 - Interactive picker improvements: padded numbers, 3 retries, case-insensitive matching
-- Test coverage for `cmd/`, `output/`, `analysis/` packages (30+ tests)
+- Test coverage for `cmd/`, `output/`, `analysis/` packages
 - GoReleaser config for cross-platform releases
 - GitHub Actions CI + release workflows
 - Install script (`curl | bash`)
