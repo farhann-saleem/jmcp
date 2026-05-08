@@ -186,6 +186,11 @@ func runSnapshot(ctx context.Context, c *client.Client, args []string, opts glob
 	if snapLabel == "" {
 		snapLabel = time.Now().UTC().Format("2006-01-02T15-04-05Z")
 	}
+	// Sanitize label to prevent path traversal
+	snapLabel = filepath.Base(snapLabel)
+	if snapLabel == "." || snapLabel == ".." || snapLabel == string(filepath.Separator) {
+		return nil, fmt.Errorf("invalid snapshot label %q", *label)
+	}
 	snap := &Snapshot{
 		Label:      snapLabel,
 		Service:    service,
