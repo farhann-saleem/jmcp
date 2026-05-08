@@ -100,6 +100,8 @@ func Execute(args []string, build BuildInfo) int {
 		return runCheck(ctx, c, cmdArgs, colorizer)
 	case "replay":
 		data, err = runReplay(ctx, c, cmdArgs)
+	case "completion":
+		err = runCompletion(cmdArgs)
 	default:
 		fmt.Fprintf(os.Stderr, "Error: unknown command %q\n\n", cmd)
 		printUsage(os.Stderr, build)

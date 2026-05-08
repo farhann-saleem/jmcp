@@ -1,0 +1,19 @@
+services:
+  jaeger:
+    image: jaegertracing/jaeger:2.6.0
+    ports:
+      - "16686:16686"  # Jaeger UI
+      - "16687:16687"  # MCP endpoint
+      - "4317:4317"    # OTLP gRPC
+      - "4318:4318"    # OTLP HTTP
+    environment:
+      - COLLECTOR_OTLP_ENABLED=true
+
+  tracegen:
+    image: jaegertracing/jaeger:2.6.0
+    entrypoint: ["/go/bin/tracegen"]
+    command: ["-traces", "500", "-workers", "5"]
+    depends_on:
+      - jaeger
+    environment:
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://jaeger:4318
